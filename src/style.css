@@ -1,0 +1,595 @@
+:root {
+  font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  color: #fff3bd;
+  background: #0b0c12;
+  --ink: #080911;
+  --cream: #fff3bd;
+  --cream-strong: #ffffbf;
+  --red-panel: #9b4650;
+  --red-dark: #472633;
+  --green: #51c65b;
+  --blue: #4db7ff;
+  --gold: #ffd85d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+}
+
+#app {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 50%, rgba(0, 0, 0, 0.09) 50%) 0 0 / 100% 4px,
+    radial-gradient(circle at 18% 12%, rgba(155, 70, 80, 0.28), transparent 22%),
+    radial-gradient(circle at 84% 84%, rgba(77, 183, 255, 0.16), transparent 26%),
+    #0b0c12;
+}
+
+#game-shell {
+  position: relative;
+  width: min(100vw, 1280px);
+  aspect-ratio: 16 / 9;
+  max-height: 100vh;
+  overflow: hidden;
+  image-rendering: pixelated;
+  background: #11121a;
+}
+
+.device-select {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 50%, rgba(0, 0, 0, 0.09) 50%) 0 0 / 100% 4px,
+    radial-gradient(circle at 22% 18%, rgba(155, 70, 80, 0.28), transparent 24%),
+    #0b0c12;
+}
+
+.device-select[hidden],
+#game-shell[hidden],
+.change-device[hidden] {
+  display: none;
+}
+
+.device-select-panel {
+  width: min(520px, 100%);
+  padding: 24px;
+  border: 3px solid var(--cream);
+  border-radius: 8px;
+  color: var(--cream);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.06) 50%, rgba(0, 0, 0, 0.08) 50%) 0 0 / 100% 4px,
+    linear-gradient(180deg, #b95460, var(--red-panel));
+  box-shadow: 0 7px 0 var(--ink), inset 0 0 0 2px rgba(8, 9, 17, 0.55);
+  text-align: center;
+  text-shadow: 2px 2px 0 var(--ink);
+}
+
+.device-select-panel h1 {
+  margin: 8px 0 20px;
+  font-size: clamp(30px, 6vw, 52px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.device-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.device-actions button,
+.change-device {
+  cursor: pointer;
+  border: 3px solid var(--cream);
+  border-radius: 8px;
+  color: var(--cream);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.06) 50%, rgba(0, 0, 0, 0.08) 50%) 0 0 / 100% 4px,
+    linear-gradient(180deg, #7b526e, #472633);
+  box-shadow: 0 5px 0 var(--ink), inset 0 0 0 2px rgba(8, 9, 17, 0.55);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+
+.device-actions button {
+  min-height: 72px;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.change-device {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 12;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+body[data-device-mode="mobile"] #game-shell {
+  width: min(100vw, 430px);
+  height: min(100vh, 932px);
+  aspect-ratio: 9 / 16;
+}
+
+#game-root,
+#hud-root {
+  position: absolute;
+  inset: 0;
+}
+
+#hud-root {
+  pointer-events: none;
+}
+
+.hud {
+  pointer-events: auto;
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.hud-top {
+  top: clamp(10px, 2vw, 24px);
+  left: clamp(10px, 2vw, 28px);
+  right: clamp(10px, 2vw, 28px);
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);
+  align-items: start;
+  justify-content: stretch;
+}
+
+.brand-panel,
+.meter-panel,
+.gem-panel,
+.toast,
+.creature-card {
+  border: 3px solid var(--cream);
+  box-shadow: 0 5px 0 var(--ink), inset 0 0 0 2px rgba(8, 9, 17, 0.55);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.06) 50%, rgba(0, 0, 0, 0.08) 50%) 0 0 / 100% 4px,
+    linear-gradient(180deg, #b95460, var(--red-panel));
+  text-shadow: 2px 2px 0 var(--ink);
+}
+
+.brand-panel,
+.meter-panel,
+.gem-panel {
+  min-height: 76px;
+  padding: 10px 16px;
+  border-radius: 8px;
+}
+
+.brand-panel {
+  min-width: 230px;
+  justify-self: start;
+}
+
+.brand-panel strong,
+.meter-panel strong,
+.gem-panel strong {
+  display: block;
+  font-size: clamp(24px, 3vw, 38px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.brand-panel small,
+.meter-panel span,
+.gem-panel span,
+.pixel-label {
+  display: block;
+  font-size: 14px;
+  color: var(--cream-strong);
+}
+
+.meter-panel {
+  min-width: 176px;
+  text-align: center;
+  justify-self: center;
+}
+
+.meter-panel.is-shiny {
+  color: #ffffff;
+  border-color: #fff472;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.08) 50%, rgba(0, 0, 0, 0.08) 50%) 0 0 / 100% 4px,
+    linear-gradient(180deg, #f0649f, #874cd7);
+}
+
+.gem-panel {
+  min-width: 128px;
+  text-align: center;
+  justify-self: end;
+}
+
+.toast {
+  position: absolute;
+  z-index: 5;
+  top: 118px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(720px, calc(100% - 32px));
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: clamp(16px, 2.2vw, 28px);
+  line-height: 1.15;
+  text-align: center;
+  pointer-events: none;
+}
+
+.shiny-toast {
+  color: #ffffff;
+  border-color: #fff472;
+}
+
+.creature-drawer {
+  pointer-events: auto;
+  position: absolute;
+  z-index: 6;
+  left: clamp(10px, 2vw, 24px);
+  bottom: clamp(12px, 2vw, 22px);
+  width: min(230px, calc(100% - 24px));
+}
+
+.creature-drawer summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 3px solid var(--cream);
+  border-radius: 8px;
+  color: var(--cream);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.06) 50%, rgba(0, 0, 0, 0.08) 50%) 0 0 / 100% 4px,
+    linear-gradient(180deg, #b95460, var(--red-panel));
+  box-shadow: 0 5px 0 var(--ink), inset 0 0 0 2px rgba(8, 9, 17, 0.55);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+
+.creature-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.creature-drawer summary::before {
+  content: "▸";
+  margin-right: 8px;
+  color: var(--cream-strong);
+}
+
+.creature-drawer[open] summary::before {
+  content: "▾";
+}
+
+.creature-dock {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 10px;
+  max-height: min(430px, calc(100vh - 220px));
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.creature-card {
+  min-height: 62px;
+  padding: 8px 9px;
+  color: var(--cream);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: center;
+  justify-items: start;
+  gap: 9px;
+  width: 100%;
+}
+
+.creature-card.selected {
+  border-color: #ffffff;
+  outline: 3px solid var(--gold);
+  transform: translateX(4px);
+}
+
+.creature-card.locked {
+  filter: saturate(0.65) brightness(0.78);
+}
+
+.creature-name {
+  display: block;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.creature-state {
+  font-size: 12px;
+  line-height: 1.1;
+  color: #fff7ca;
+}
+
+.mini-sprite {
+  width: 34px;
+  height: 34px;
+  display: block;
+  border: 3px solid var(--ink);
+  border-radius: 50% 50% 45% 45%;
+  box-shadow: 0 2px 0 var(--ink);
+  background: var(--green);
+}
+
+.mini-emberpup {
+  background: #d85c45;
+}
+
+.mini-tidetot {
+  background: #56a8ff;
+}
+
+.mini-volthorn {
+  background: #ffd447;
+}
+
+.mini-moonmew {
+  background: #b68cff;
+}
+
+.aim-note {
+  position: absolute;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  z-index: 5;
+  color: var(--cream);
+  font-size: clamp(14px, 1.6vw, 20px);
+  text-align: center;
+  text-shadow: 2px 2px 0 var(--ink);
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  #game-shell {
+    width: 100vw;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    max-height: 100vh;
+  }
+
+  .hud-top {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 6px;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+  }
+
+  .brand-panel {
+    min-width: 0;
+    justify-self: stretch;
+  }
+
+  .meter-panel {
+    justify-self: stretch;
+  }
+
+  .gem-panel {
+    justify-self: stretch;
+  }
+
+  .brand-panel,
+  .meter-panel,
+  .gem-panel {
+    min-height: 46px;
+    padding: 6px 8px;
+  }
+
+  .brand-panel strong,
+  .meter-panel strong,
+  .gem-panel strong {
+    font-size: clamp(18px, 5.4vw, 24px);
+  }
+
+  .brand-panel small,
+  .meter-panel span,
+  .gem-panel span,
+  .pixel-label {
+    font-size: 10px;
+  }
+
+  .toast {
+    top: 64px;
+    font-size: 14px;
+    padding: 6px 10px;
+  }
+
+  .creature-drawer {
+    width: min(154px, calc(100% - 20px));
+    bottom: 8px;
+  }
+
+  .creature-drawer summary {
+    min-height: 34px;
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+
+  .creature-dock {
+    gap: 6px;
+    max-height: 138px;
+  }
+
+  .creature-card {
+    min-height: 42px;
+    padding: 4px 6px;
+    grid-template-columns: 28px 1fr;
+  }
+
+  .creature-name {
+    font-size: 13px;
+  }
+
+  .creature-state {
+    font-size: 10px;
+  }
+
+  .mini-sprite {
+    width: 28px;
+    height: 28px;
+  }
+
+  .aim-note {
+    bottom: 14px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+  body {
+    align-content: center;
+  }
+
+  #game-shell {
+    width: 100vw;
+    height: 100vh;
+    aspect-ratio: auto;
+  }
+
+  .hud-top {
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+
+  .brand-panel {
+    grid-column: 1 / -1;
+  }
+
+  .brand-panel,
+  .meter-panel,
+  .gem-panel {
+    min-height: 58px;
+  }
+
+  .brand-panel strong {
+    font-size: 28px;
+  }
+
+  .meter-panel strong,
+  .gem-panel strong {
+    font-size: 30px;
+  }
+
+  .toast {
+    top: 146px;
+    width: min(330px, calc(100% - 28px));
+    font-size: 17px;
+  }
+
+  .creature-drawer {
+    left: 10px;
+    bottom: 12px;
+    width: min(178px, calc(50vw - 14px));
+  }
+
+  .creature-dock {
+    max-height: 252px;
+  }
+
+  .aim-note {
+    bottom: 28px;
+    left: calc(50% + 42px);
+    width: min(210px, 46vw);
+    font-size: 14px;
+  }
+}
+
+body[data-device-mode="mobile"] {
+  align-content: center;
+}
+
+body[data-device-mode="mobile"] .hud-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  align-items: stretch;
+}
+
+body[data-device-mode="mobile"] .brand-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
+  justify-self: stretch;
+}
+
+body[data-device-mode="mobile"] .meter-panel,
+body[data-device-mode="mobile"] .gem-panel {
+  justify-self: stretch;
+}
+
+body[data-device-mode="mobile"] .brand-panel,
+body[data-device-mode="mobile"] .meter-panel,
+body[data-device-mode="mobile"] .gem-panel {
+  min-height: 58px;
+  padding: 6px 8px;
+}
+
+body[data-device-mode="mobile"] .brand-panel strong {
+  font-size: 28px;
+}
+
+body[data-device-mode="mobile"] .meter-panel strong,
+body[data-device-mode="mobile"] .gem-panel strong {
+  font-size: 30px;
+}
+
+body[data-device-mode="mobile"] .brand-panel small,
+body[data-device-mode="mobile"] .meter-panel span,
+body[data-device-mode="mobile"] .gem-panel span,
+body[data-device-mode="mobile"] .pixel-label {
+  font-size: 10px;
+}
+
+body[data-device-mode="mobile"] .toast {
+  top: 146px;
+  width: min(330px, calc(100% - 28px));
+  font-size: 17px;
+}
+
+body[data-device-mode="mobile"] .creature-drawer {
+  left: 10px;
+  bottom: 12px;
+  width: min(178px, calc(50vw - 14px));
+}
+
+body[data-device-mode="mobile"] .creature-dock {
+  max-height: 252px;
+}
+
+body[data-device-mode="mobile"] .aim-note {
+  bottom: 36px;
+  left: calc(50% + 42px);
+  width: min(210px, 46vw);
+  font-size: 14px;
+}

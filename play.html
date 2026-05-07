@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>异色精灵投掷场</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "phaser": "/node_modules/phaser/dist/phaser.esm.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main id="app">
+      <section id="game-shell">
+        <div id="game-root" aria-label="精灵球投掷游戏画面"></div>
+        <div id="hud-root"></div>
+      </section>
+    </main>
+    <script type="module" src="/build/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>异色精灵投掷场</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <section id="device-select" class="device-select" aria-label="选择布局">
+        <div class="device-select-panel">
+          <span class="pixel-label">选择游玩布局</span>
+          <h1>异色精灵投掷场</h1>
+          <div class="device-actions">
+            <button type="button" data-device-mode="mobile">手机端</button>
+            <button type="button" data-device-mode="desktop">电脑端</button>
+          </div>
+        </div>
+      </section>
+      <button id="change-device" class="change-device" type="button">切换端</button>
+      <section id="game-shell">
+        <div id="game-root" aria-label="精灵球投掷游戏画面"></div>
+        <div id="hud-root"></div>
+      </section>
+    </main>
+    <script src="./node_modules/phaser/dist/phaser.min.js"></script>
+    <script>
+      const CREATURES = [
+        { id: "mossbun", name: "苔团", title: "软叶精灵", catchRate: 0.72, assets: { normal: "./src/assets/creatures/mossbun-normal.png", shiny: "./src/assets/creatures/mossbun-shiny.png" } },
+        { id: "emberpup", name: "炭爪", title: "火绒精灵", catchRate: 0.62, assets: { normal: "./src/assets/creatures/emberpup-normal.png", shiny: "./src/assets/creatures/emberpup-shiny.png" } },
+        { id: "tidetot", name: "潮芽", title: "水泡精灵", catchRate: 0.58, assets: { normal: "./src/assets/creatures/tidetot-normal.png", shiny: "./src/assets/creatures/tidetot-shiny.png" } },
+        { id: "volthorn", name: "伏刺", title: "电角精灵", catchRate: 0.52, assets: { normal: "./src/assets/creatures/volthorn-normal.png", shiny: "./src/assets/creatures/volthorn-shiny.png" } },
+        { id: "moonmew", name: "月咕", title: "星绒精灵", catchRate: 0.45, assets: { normal: "./src/assets/creatures/moonmew-normal.png", shiny: "./src/assets/creatures/moonmew-shiny.png" } }
+      ];
+
+      const STORAGE_KEY = "yise-capture-progress-standalone-v1";
+      const getCreature = (id) => CREATURES.find((item) => item.id === id) || CREATURES[0];
+      const hasUnlocked = (progress, id) => progress.unlockedCreatureIds.includes(id);
+      const hasCaughtShiny = (progress, id) => progress.shinyCaughtCreatureIds.includes(id);
+      const initialProgress = () => ({ selectedCreatureId: "mossbun", unlockedCreatureIds: ["mossbun"], shinyCaughtCreatureIds: [], gems: 0, throwsSinceLastShiny: 0 });
+      const loadProgress = () => {
+        try {
+          return { ...initialProgress(), ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") };
+        } catch {
+          return initialProgress();
+        }
+      };
+      const saveProgress = (progress) => localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+      const shinyChance = (throwsSinceLastShiny) => {
+        if (throwsSinceLastShiny < 20) return 0;
+        if (throwsSinceLastShiny >= 80) return 1;
+        return 0.035 + ((throwsSinceLastShiny - 20) / 60) * 0.22;
+      };
+      const rollShiny = (throwsSinceLastShiny) => Math.random() < shinyChance(throwsSinceLastShiny);
+      const rollCapture = (creature, isShiny) => Math.random() < creature.catchRate * (isShiny ? 0.82 : 1);
+
+      class Hud {
+        constructor(root, dispatch) {
+          this.root = root;
+          this.dispatch = dispatch;
+          this.state = null;
+          this.root.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-action][data-id]");
+            if (!button) return;
+            this.dispatch({ type: button.dataset.action, creatureId: button.dataset.id });
+          });
+        }
+
+        update(state) {
+          const drawerWasOpen = this.root.querySelector(".creature-drawer")?.open ?? true;
+          this.state = state;
+          this.root.innerHTML = `
+            <div class="hud hud-top">
+              <div class="brand-panel"><span class="pixel-label">当前目标</span><strong>${state.creatureName}</strong><small>${state.creatureTitle}</small></div>
+              <div class="meter-panel ${state.isShiny ? "is-shiny" : ""}"><span>${state.isShiny ? "异色出现" : "异色保底"}</span><strong>${state.isShiny ? "抓住它!" : `${state.throwsSinceLastShiny}/80`}</strong></div>
+              <div class="gem-panel"><span>精灵宝石</span><strong>${state.gems}</strong></div>
+            </div>
+            <div class="toast ${state.isShiny ? "shiny-toast" : ""}">${state.message}</div>
+            <details class="creature-drawer" ${drawerWasOpen ? "open" : ""}>
+              <summary><span>精灵列表</span><strong>${state.creatures.filter((creature) => creature.unlocked).length}/5</strong></summary>
+              <div class="creature-dock" aria-label="精灵选择">
+                ${state.creatures.map((creature) => `
+                  <button class="creature-card ${creature.selected ? "selected" : ""} ${creature.unlocked ? "" : "locked"}"
+                    data-action="${creature.unlocked ? "select" : "unlock"}" data-id="${creature.id}">
+                    <span class="mini-sprite mini-${creature.id}"></span>
+                    <span class="creature-copy">
+                      <span class="creature-name">${creature.name}</span>
+                      <span class="creature-state">${this.label(creature)}</span>
+                    </span>
+                  </button>
+                `).join("")}
+              </div>
+            </details>
+            <div class="aim-note">拖动精灵球，松手投掷</div>
+          `;
+        }
+
+        label(creature) {
+          if (creature.shinyCaught) return "异色已收服";
+          if (creature.unlocked) return "已解锁";
+          return (this.state && this.state.gems > 0) ? "宝石解锁" : "未解锁";
+        }
+      }
+
+      class GameScene extends Phaser.Scene {
+        constructor() {
+          super("GameScene");
+        }
+
+        preload() {
+          for (const creature of CREATURES) {
+            this.load.image(`${creature.id}-normal`, creature.assets.normal);
+            this.load.image(`${creature.id}-shiny`, creature.assets.shiny);
+          }
+        }
+
+        create() {
+          this.progress = loadProgress();
+          this.message = "拖住下方精灵球，往后拉再松手。";
+          this.currentShiny = false;
+          this.isBallFlying = false;
+          this.resolving = false;
+          this.dragStart = null;
+          this.ballVelocity = new Phaser.Math.Vector2();
+          this.ballHome = new Phaser.Math.Vector2(this.scale.width * 0.5, this.scale.height - 150);
+          this.targetPoint = new Phaser.Math.Vector2(this.scale.width * 0.5, this.scale.height * 0.48);
+          this.spawnIndex = 0;
+          this.missRecoveryMs = 180;
+          this.escapeRecoveryMs = 240;
+          this.normalCaughtRecoveryMs = 140;
+          this.shinyCaughtRecoveryMs = 320;
+          this.createWorld();
+          this.spawnCreature(false);
+          this.createBall();
+          this.registerInput();
+          this.syncHud();
+        }
+
+        update(_, delta) {
+          if (!this.isBallFlying) return;
+          const seconds = delta / 1000;
+          this.ballVelocity.y += 760 * seconds;
+          this.ball.x += this.ballVelocity.x * seconds;
+          this.ball.y += this.ballVelocity.y * seconds;
+          this.ball.rotation += 10 * seconds;
+          if (Phaser.Math.Distance.Between(this.ball.x, this.ball.y, this.targetPoint.x, this.targetPoint.y) < 58) this.resolveThrow(true);
+          else if (this.ball.y > this.scale.height + 90 || this.ball.x < -90 || this.ball.x > this.scale.width + 90) this.resolveThrow(false);
+        }
+
+        createWorld() {
+          this.cameras.main.setBackgroundColor("#11121a");
+          this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x11121a).setOrigin(0);
+          const bg = this.add.graphics();
+          bg.fillStyle(0x181622, 1);
+          bg.fillRoundedRect(24, 44, this.scale.width - 48, this.scale.height - 88, 14);
+          bg.lineStyle(4, 0xfff7b3, 1);
+          bg.strokeRoundedRect(24, 44, this.scale.width - 48, this.scale.height - 88, 14);
+          for (let i = 0; i < 48; i += 1) {
+            const x = Phaser.Math.Between(34, this.scale.width - 34);
+            const y = Phaser.Math.Between(56, this.scale.height - 70);
+            bg.fillStyle(Phaser.Math.RND.pick([0x322538, 0x56402c, 0x243b42, 0x44333b]), 0.42);
+            bg.fillTriangle(x, y, x + Phaser.Math.Between(12, 28), y + Phaser.Math.Between(-10, 16), x - Phaser.Math.Between(8, 24), y + Phaser.Math.Between(8, 22));
+          }
+          this.add.rectangle(0, this.scale.height - 68, this.scale.width, 80, 0x0d0e15, 0.86).setOrigin(0);
+          this.add.rectangle(0, this.scale.height - 70, this.scale.width, 3, 0xfff7b3, 0.8).setOrigin(0);
+          this.creatureShadow = this.add.ellipse(this.targetPoint.x, this.targetPoint.y + 136, 170, 34, 0x030307, 0.42);
+          this.aimLine = this.add.graphics();
+        }
+
+        createBall() {
+          const bottomOffset = this.scale.height > this.scale.width ? 260 : 185;
+          this.ballHome.set(this.scale.width * 0.5, this.scale.height - bottomOffset);
+          this.ball = this.add.container(this.ballHome.x, this.ballHome.y);
+          this.ball.add([
+            this.add.circle(0, 0, 29, 0x080911).setStrokeStyle(5, 0x080911),
+            this.add.arc(0, -1, 24, 180, 360, false, 0xd55154),
+            this.add.arc(0, 1, 24, 0, 180, false, 0xfff1c0),
+            this.add.rectangle(0, 0, 51, 9, 0x080911),
+            this.add.circle(0, 0, 10, 0xfff7b3).setStrokeStyle(4, 0x080911)
+          ]);
+          this.ball.setSize(58, 58);
+          this.ball.setInteractive(new Phaser.Geom.Circle(0, 0, 48), Phaser.Geom.Circle.Contains);
+          this.ballHitGuide = this.add.graphics();
+          this.drawBallHitGuide();
+        }
+
+        registerInput() {
+          this.ball.on("pointerdown", (pointer) => {
+            if (this.isBallFlying || this.resolving) return;
+            this.dragStart = new Phaser.Math.Vector2(pointer.worldX, pointer.worldY);
+            this.message = "往后拉得越远，投得越猛。";
+            this.syncHud();
+          });
+          this.input.on("pointermove", (pointer) => {
+            if (!this.dragStart || this.isBallFlying || this.resolving) return;
+            const pull = new Phaser.Math.Vector2(pointer.worldX - this.dragStart.x, pointer.worldY - this.dragStart.y).limit(135);
+            this.ball.setPosition(this.ballHome.x + pull.x * 0.42, this.ballHome.y + pull.y * 0.42);
+            this.drawBallHitGuide();
+            this.drawAim(pull);
+          });
+          this.input.on("pointerup", (pointer) => {
+            if (!this.dragStart || this.isBallFlying || this.resolving) return;
+            const pull = new Phaser.Math.Vector2(pointer.worldX - this.dragStart.x, pointer.worldY - this.dragStart.y).limit(145);
+            this.dragStart = null;
+            this.aimLine.clear();
+            if (pull.length() < 16) {
+              this.resetBall();
+              this.message = "拉远一点再松手。";
+              this.syncHud();
+              return;
+            }
+            this.ballVelocity.set(-pull.x * 6.8, -pull.y * 6.8 - 170);
+            this.isBallFlying = true;
+            this.message = "精灵球飞出去了!";
+            this.syncHud();
+          });
+          window.addEventListener("game-action", (event) => this.handleHudAction(event.detail));
+        }
+
+        handleHudAction(event) {
+          if (event.type === "select") {
+            if (!hasUnlocked(this.progress, event.creatureId)) return;
+            this.progress.selectedCreatureId = event.creatureId;
+            saveProgress(this.progress);
+            this.spawnCreature(false);
+            this.message = `${getCreature(event.creatureId).name} 登场。`;
+            this.syncHud();
+            return;
+          }
+          if (hasUnlocked(this.progress, event.creatureId)) return;
+          if (this.progress.gems <= 0) {
+            this.message = "先捕捉异色精灵，获得精灵宝石。";
+            this.syncHud();
+            return;
+          }
+          this.progress.gems -= 1;
+          this.progress.unlockedCreatureIds.push(event.creatureId);
+          this.progress.selectedCreatureId = event.creatureId;
+          saveProgress(this.progress);
+          this.spawnCreature(false);
+          this.message = `消耗 1 个宝石，${getCreature(event.creatureId).name} 已解锁。`;
+          this.syncHud();
+        }
+
+        resolveThrow(hit) {
+          if (this.resolving) return;
+          this.resolving = true;
+          this.isBallFlying = false;
+          if (!hit) {
+            this.progress.throwsSinceLastShiny += 1;
+            this.message = "擦肩而过，再校准一下角度。";
+            this.time.delayedCall(this.missRecoveryMs, () => this.afterThrow());
+            return;
+          }
+          const creature = getCreature(this.progress.selectedCreatureId);
+          this.creature.setVisible(false);
+          this.creatureShadow.setVisible(false);
+          this.tweens.add({ targets: this.ball, x: this.targetPoint.x, y: this.targetPoint.y + 46, scale: 0.88, duration: 180, ease: "Back.easeOut", onComplete: () => this.playCaptureShake(creature) });
+        }
+
+        playCaptureShake(creature) {
+          const caught = rollCapture(creature, this.currentShiny);
+          this.tweens.add({
+            targets: this.ball,
+            x: { from: this.ball.x - 12, to: this.ball.x + 12 },
+            yoyo: true,
+            repeat: caught ? 1 : 1,
+            duration: 72,
+            ease: "Sine.easeInOut",
+            onComplete: () => {
+              if (caught) this.handleCaught(creature);
+              else {
+                this.message = this.currentShiny ? "异色挣脱了，稳住，还有机会。" : `${creature.name} 挣脱了。`;
+                this.playBallBreakFx();
+                this.creature.setVisible(true);
+                this.creatureShadow.setVisible(true);
+                this.time.delayedCall(this.escapeRecoveryMs, () => this.afterThrow());
+              }
+            }
+          });
+        }
+
+        handleCaught(creature) {
+          this.progress.throwsSinceLastShiny += 1;
+          if (this.currentShiny && !hasCaughtShiny(this.progress, creature.id)) {
+            this.progress.shinyCaughtCreatureIds.push(creature.id);
+            this.progress.gems += 1;
+            this.message = `收服异色${creature.name}! 获得 1 个精灵宝石。`;
+            this.burstSparkles();
+          } else if (this.currentShiny) {
+            this.message = `又收服了一只异色${creature.name}!`;
+            this.burstSparkles();
+          } else {
+            this.message = `${creature.name} 收服成功。`;
+          }
+          this.time.delayedCall(this.currentShiny ? this.shinyCaughtRecoveryMs : this.normalCaughtRecoveryMs, () => this.afterThrow());
+        }
+
+        afterThrow() {
+          const nextIsShiny = rollShiny(this.progress.throwsSinceLastShiny);
+          if (nextIsShiny) this.progress.throwsSinceLastShiny = 0;
+          saveProgress(this.progress);
+          this.spawnCreature(nextIsShiny);
+          this.resetBall();
+          this.resolving = false;
+          if (nextIsShiny) {
+            this.message = `异色${getCreature(this.progress.selectedCreatureId).name} 出现了!`;
+            this.cameras.main.shake(260, 0.006);
+            this.burstSparkles();
+          }
+          this.syncHud();
+        }
+
+        spawnCreature(isShiny) {
+          this.currentShiny = isShiny;
+          if (this.creature) this.creature.destroy();
+          const creature = getCreature(this.progress.selectedCreatureId);
+          this.pickNextCreaturePosition();
+          this.creature = this.add.image(this.targetPoint.x, this.targetPoint.y, `${creature.id}-${isShiny ? "shiny" : "normal"}`);
+          this.creature.setOrigin(0.5, 0.55);
+          this.fitCreatureImage(this.creature, isShiny);
+          this.creatureShadow.setVisible(true);
+          this.creatureShadow.setPosition(this.targetPoint.x, this.targetPoint.y + 136);
+        }
+
+        fitCreatureImage(image, isShiny) {
+          const maxHeight = isShiny ? 340 : 320;
+          const maxWidth = 360;
+          image.setScale(Math.min(maxWidth / image.width, maxHeight / image.height));
+        }
+
+        pickNextCreaturePosition() {
+          const positions = [
+            { x: 0.5, y: 0.48 },
+            { x: 0.43, y: 0.5 },
+            { x: 0.58, y: 0.47 },
+            { x: 0.53, y: 0.42 },
+            { x: 0.47, y: 0.44 }
+          ];
+          const position = positions[this.spawnIndex % positions.length];
+          this.spawnIndex += 1;
+          this.targetPoint.set(this.scale.width * position.x, this.scale.height * position.y);
+        }
+
+        drawAim(pull) {
+          this.aimLine.clear();
+          const power = Phaser.Math.Clamp(pull.length() / 145, 0, 1);
+          this.aimLine.lineStyle(5, 0xfff7b3, 0.88);
+          this.aimLine.beginPath();
+          this.aimLine.moveTo(this.ball.x, this.ball.y);
+          this.aimLine.lineTo(this.ball.x - pull.x * 1.45, this.ball.y - pull.y * 1.45 - 40 * power);
+          this.aimLine.strokePath();
+          this.aimLine.fillStyle(0xfff7b3, 0.28);
+          this.aimLine.fillCircle(this.ball.x - pull.x * 1.45, this.ball.y - pull.y * 1.45 - 40 * power, 18 + 18 * power);
+        }
+
+        drawBallHitGuide() {
+          this.ballHitGuide.clear();
+          this.drawDashedCircle(this.ballHitGuide, this.ball.x, this.ball.y, 48, 0xfff7b3, 0.68, 4);
+          this.drawDashedCircle(this.ballHitGuide, this.ball.x, this.ball.y, 56, 0x52c7ff, 0.42, 2);
+        }
+
+        drawDashedCircle(graphics, x, y, radius, color, alpha, width) {
+          const segments = 34;
+          graphics.lineStyle(width, color, alpha);
+          for (let i = 0; i < segments; i += 2) {
+            const start = (i / segments) * Math.PI * 2;
+            const end = ((i + 1) / segments) * Math.PI * 2;
+            graphics.beginPath();
+            graphics.arc(x, y, radius, start, end, false);
+            graphics.strokePath();
+          }
+        }
+
+        resetBall() {
+          this.isBallFlying = false;
+          this.ballVelocity.set(0, 0);
+          this.ball.setPosition(this.ballHome.x, this.ballHome.y);
+          this.ball.setRotation(0);
+          this.ball.setScale(1);
+          this.ball.setVisible(true);
+          this.drawBallHitGuide();
+        }
+
+        playBallBreakFx() {
+          const x = this.ball.x;
+          const y = this.ball.y;
+          this.ball.setVisible(false);
+          for (let i = 0; i < 14; i += 1) {
+            const shard = this.add.rectangle(x, y, Phaser.Math.Between(5, 11), Phaser.Math.Between(4, 9), Phaser.Math.RND.pick([0xd55154, 0xfff1c0, 0x080911, 0xfff7b3]));
+            shard.setRotation(Phaser.Math.FloatBetween(0, Math.PI));
+            this.tweens.add({
+              targets: shard,
+              x: x + Phaser.Math.Between(-82, 82),
+              y: y + Phaser.Math.Between(-64, 58),
+              alpha: 0,
+              rotation: shard.rotation + Phaser.Math.FloatBetween(-4, 4),
+              duration: Phaser.Math.Between(220, 380),
+              ease: "Cubic.easeOut",
+              onComplete: () => shard.destroy()
+            });
+          }
+        }
+
+        burstSparkles() {
+          for (let i = 0; i < 26; i += 1) {
+            const spark = this.add.circle(this.targetPoint.x, this.targetPoint.y, Phaser.Math.Between(4, 8), Phaser.Math.RND.pick([0xfff06c, 0xffffff, 0x8fffff, 0xff9edb]));
+            this.tweens.add({ targets: spark, x: this.targetPoint.x + Phaser.Math.Between(-150, 150), y: this.targetPoint.y + Phaser.Math.Between(-130, 80), alpha: 0, scale: 0, duration: Phaser.Math.Between(520, 980), ease: "Cubic.easeOut", onComplete: () => spark.destroy() });
+          }
+        }
+
+        syncHud() {
+          const selected = getCreature(this.progress.selectedCreatureId);
+          window.hud.update({
+            creatureName: selected.name,
+            creatureTitle: selected.title,
+            throwsSinceLastShiny: this.progress.throwsSinceLastShiny,
+            gems: this.progress.gems,
+            isShiny: this.currentShiny,
+            message: this.message,
+            creatures: CREATURES.map((creature) => ({
+              id: creature.id,
+              name: creature.name,
+              unlocked: hasUnlocked(this.progress, creature.id),
+              selected: creature.id === this.progress.selectedCreatureId,
+              shinyCaught: hasCaughtShiny(this.progress, creature.id)
+            }))
+          });
+        }
+      }
+
+      const DEVICE_MODE_KEY = "yise-device-mode-v1";
+      const requestedMode = new URLSearchParams(window.location.search).get("mode");
+      const savedMode = localStorage.getItem(DEVICE_MODE_KEY);
+      const selectedMode = requestedMode === "mobile" || requestedMode === "desktop" ? requestedMode : savedMode;
+
+      document.querySelector("#game-shell").hidden = true;
+      document.querySelector("#change-device").hidden = true;
+
+      function startGame(mode) {
+        localStorage.setItem(DEVICE_MODE_KEY, mode);
+        document.body.dataset.deviceMode = mode;
+        document.querySelector("#device-select").hidden = true;
+        document.querySelector("#game-shell").hidden = false;
+        document.querySelector("#change-device").hidden = false;
+        window.hud = new Hud(document.querySelector("#hud-root"), (event) => window.dispatchEvent(new CustomEvent("game-action", { detail: event })));
+        const gameSize = mode === "mobile" ? { width: 720, height: 1280 } : { width: 1280, height: 720 };
+        new Phaser.Game({
+          type: Phaser.AUTO,
+          parent: "game-root",
+          width: gameSize.width,
+          height: gameSize.height,
+          backgroundColor: "#11121a",
+          scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+          pixelArt: true,
+          antialias: false,
+          scene: [GameScene]
+        });
+      }
+
+      document.querySelectorAll("[data-device-mode]").forEach((button) => {
+        button.addEventListener("click", () => startGame(button.dataset.deviceMode));
+      });
+      document.querySelector("#change-device").addEventListener("click", () => {
+        localStorage.removeItem(DEVICE_MODE_KEY);
+        window.location.href = window.location.pathname;
+      });
+
+      if (selectedMode === "mobile" || selectedMode === "desktop") {
+        startGame(selectedMode);
+      }
+    </script>
+  </body>
+</html>

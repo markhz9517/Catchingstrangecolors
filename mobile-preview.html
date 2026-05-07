@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>设备布局模拟</title>
+    <style>
+      :root {
+        font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+        color: #fff3bd;
+        background: #0b0c12;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        gap: 20px;
+        place-items: center;
+        padding: 24px;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.035) 50%, rgba(0, 0, 0, 0.09) 50%) 0 0 / 100% 4px,
+          #0b0c12;
+      }
+
+      .preview-grid {
+        width: min(1180px, 100%);
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 24px;
+        align-items: start;
+      }
+
+      .phone-card {
+        display: grid;
+        justify-items: center;
+        gap: 10px;
+      }
+
+      .phone-card h2 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      .device {
+        border: 8px solid #080911;
+        border-radius: 28px;
+        padding: 12px;
+        background: #1b1d28;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+      }
+
+      iframe {
+        display: block;
+        border: 0;
+        border-radius: 18px;
+        background: #11121a;
+      }
+
+      .portrait iframe {
+        width: 390px;
+        height: 844px;
+      }
+
+      .landscape iframe {
+        width: 844px;
+        max-width: calc(100vw - 80px);
+        height: 390px;
+      }
+
+      @media (max-width: 920px) {
+        .landscape iframe {
+          width: 390px;
+          height: 220px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="preview-grid">
+      <section class="phone-card portrait">
+        <h2>手机端 390 x 844</h2>
+        <div class="device">
+          <iframe src="./standalone.html?mode=mobile" title="手机端模拟"></iframe>
+        </div>
+      </section>
+      <section class="phone-card landscape">
+        <h2>电脑端 844 x 390</h2>
+        <div class="device">
+          <iframe src="./standalone.html?mode=desktop" title="电脑端模拟"></iframe>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>
